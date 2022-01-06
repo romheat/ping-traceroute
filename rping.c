@@ -13,19 +13,22 @@
 #include "b-time.h"
 #include "b-print.h"
 
+#define M_HEADERS (sizeof(struct iphdr) +   \
+                   sizeof(struct icmphdr) + \
+                   sizeof(struct icmp))
+
 struct resp_pong
 {
   struct sockaddr_in addr_in;
   int err;
   struct
   {
-    struct iphdr m_iphdr;
-    struct icmphdr m_icmphdr;
-    struct icmp m_icmp;
+    struct iphdr m_iphdr;        // 20
+    struct icmphdr m_icmphdr;    // 8
+    struct icmp m_icmp;          // 28
+    char m_data[64 - M_HEADERS]; // 8
   } m;
 };
-
-#define MTU 1472
 
 struct resp_pong *pong(int);
 
@@ -57,29 +60,38 @@ unsigned short in_cksum(unsigned short *addr, int len)
 
 void ping(struct sockaddr *ai_addr, int sock, uint16_t seq)
 {
-  struct icmp m_icmp;
-  m_icmp.icmp_type = ICMP_ECHO;
-  m_icmp.icmp_code = ICMP_ECHOREPLY;
-  m_icmp.icmp_cksum = 0;
+  // packet 64 bits as linux ping
+  struct packet
+  {
+    struct icmp m_icmp;
+    char m_data[64 - sizeof(struct icmp)];
+  } m_packet;
+
+  m_packet.m_icmp.icmp_type = ICMP_ECHO;
+  m_packet.m_icmp.icmp_code = ICMP_ECHOREPLY;
+  m_packet.m_icmp.icmp_cksum = 0;
 
   // icmp_hun.ih_idseq.icd_id is the identifier of
   // the ICMP datagram header
-  m_icmp.icmp_hun.ih_idseq.icd_id = htons(1000);
+  m_packet.m_icmp.icmp_hun.ih_idseq.icd_id = htons(1000);
 
   // icmp_seq icmp_hun.ih_idseq.icd_seq is the sequence
   // number field
-  m_icmp.icmp_hun.ih_idseq.icd_seq = htons(seq);
+  m_packet.m_icmp.icmp_hun.ih_idseq.icd_seq = htons(seq);
 
-  memset(&m_icmp.icmp_dun, 0, sizeof(m_icmp.icmp_dun));
+  memset(&m_packet.m_icmp.icmp_dun,
+         0,
+         sizeof(m_packet.m_icmp.icmp_dun));
 
   // icmp_dun.id_data , Can be set as the time to send the datagram
 
-  // checksum
-  m_icmp.icmp_cksum = in_cksum((unsigned short *)&m_icmp, sizeof(m_icmp));
+  // checksum (full packet)
+  m_packet.m_icmp.icmp_cksum = in_cksum((unsigned short *)&m_packet,
+                                        sizeof(m_packet));
 
   ssize_t send = sendto(sock,
-                        &m_icmp,
-                        sizeof(m_icmp),
+                        &m_packet,
+                        sizeof(m_packet),
                         0,
                         ai_addr,
                         sizeof(*ai_addr));
