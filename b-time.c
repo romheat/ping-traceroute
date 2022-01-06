@@ -50,7 +50,7 @@ struct time_stats *init_time_stats()
   return stats;
 }
 
-struct time_stats *calculate_time_stats(double elapsed, struct time_stats *stats)
+void update_time_stats(double elapsed, struct time_stats *stats)
 {
   if (elapsed > stats->max)
     stats->max = elapsed;
@@ -59,5 +59,4 @@ struct time_stats *calculate_time_stats(double elapsed, struct time_stats *stats
   stats->total += elapsed;
   stats->n++;
   stats->last_value = elapsed;
-  return stats;
 }

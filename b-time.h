@@ -7,13 +7,10 @@
 #define NANO_TO_SEC 1000000000.0
 #define NANO_TO_MS 1000000.0
 
-#define ElapsedStart()   \
-  struct timespec start; \
-  clock_gettime(CLOCK_REALTIME, &start);
 
-#define ElapsedEnd()   \
-  struct timespec end; \
-  clock_gettime(CLOCK_REALTIME, &end);
+#define Elapsed() struct timespec start, end;
+#define ElapsedStart() clock_gettime(CLOCK_REALTIME, &start);
+#define ElapsedEnd() clock_gettime(CLOCK_REALTIME, &end);
 
 #define ELAPSED_MS time_diff_ms(start, end)
 #define ELAPSED_SEC time_diff_sec(start, end)
@@ -32,7 +29,7 @@ struct time_stats
 };
 
 struct time_stats *init_time_stats();
-struct time_stats *calculate_time_stats(double elapsed, struct time_stats *stats);
+void update_time_stats(double elapsed, struct time_stats *stats);
 
 /* time */
 long time_nanos();
