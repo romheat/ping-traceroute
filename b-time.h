@@ -1,5 +1,6 @@
 #ifndef B_TOOLS_H
 #define B_TOOLS_H
+#include <time.h>
 
 /* macros for elapsed time */
 

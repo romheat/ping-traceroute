@@ -6,7 +6,7 @@
 
 void print_iphdr(struct iphdr m_iphdr)
 {
-  printf("\thdr IP   Version " NUMBER("%d") " Bytes %d Service %d Total %d Protocol %d TTL %d\n",
+  printf("\thdr IP   Version " fNUMBER("%d") " Bytes " fSIZE " Service %d Total %d Protocol %d TTL %d\n",
          m_iphdr.version,
          ((unsigned int)(m_iphdr.ihl)) * 4,
          m_iphdr.tos,

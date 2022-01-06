@@ -172,20 +172,24 @@ int main(int argc, char *argv[])
                 hostname,
                 sizeof(hostname), NULL, 0, 0);
 
-    printf("Reply from=%s icmp_seq=%3d time=%.4fms Err=%d\t\n",
+    printf(fSIZEL " bytes from=" fSTRING " icmp_seq=" fNUMD
+                  " ttl=" fNUMD " time=" fMILS " err=%d\t\n",
+           sizeof(r_pong->m),
            hostname,
            seq,
+           r_pong->m.m_iphdr.ttl,
            stats->last_value,
            r_pong->err);
 
-    print_iphdr(r_pong->m.m_iphdr);
-    print_icmphdr(r_pong->m.m_icmphdr);
-    print_icmp(r_pong->m.m_icmp);
+    // todo: add option to show this
+    // print_iphdr(r_pong->m.m_iphdr);
+    // print_icmphdr(r_pong->m.m_icmphdr);
 
     free(r_pong);
   }
 
-  printf("%d pakages min=%.2f max=%.2f avg=%.2f total time=%.4fms\t\n",
+  printf(fNUMD " packets - min=" fMILS2 " max=" fMILS2
+               " avg=" fMILS2 " total time=" fMILS "\n",
          seq,
          stats->min,
          stats->max,
