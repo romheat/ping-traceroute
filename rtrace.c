@@ -27,7 +27,7 @@ struct resp_pong
 
 #define MTU 1472
 
-struct resp_pong *pong(int);
+void pong(int, struct resp_pong *);
 
 // bsd checksum
 unsigned short in_cksum(unsigned short *addr, int len)
@@ -91,11 +91,16 @@ void ping(struct sockaddr *ai_addr, int sock, uint16_t seq)
   }
 }
 
-struct resp_pong *pong(int sock)
+struct resp_pong *create_r_pong()
 {
-
   struct resp_pong *r_pong = malloc(sizeof(struct resp_pong));
+  return r_pong;
+}
+
+void pong(int sock, struct resp_pong *r_pong)
+{
   socklen_t addrlen = sizeof(r_pong->addr_in);
+  r_pong->err = 0;
 
   ssize_t recv = recvfrom(sock,
                           &r_pong->m,
@@ -107,27 +112,25 @@ struct resp_pong *pong(int sock)
   if (recv < 0)
   {
     r_pong->err = errno;
-    perror("recvfrom");
-    return r_pong;
-  }
-  else
-  {
-    return r_pong;
+    //perror("recvfrom");
   }
 }
 
 int main(int argc, char *argv[])
 {
 
+  // todo: parameter to number of hops
+
   if (argc != 2)
   {
-    fprintf(stderr, "rping <ip>\n");
+    fprintf(stderr, "rtrace <ip>\n");
     exit(1);
   }
 
   char *host = argv[1];
 
   struct addrinfo *ai;
+
   if (getaddrinfo(host, NULL, NULL, &ai) < 0)
   {
     perror("getaddrinfo");
@@ -149,51 +152,89 @@ int main(int argc, char *argv[])
   }
 
   uint16_t seq = 0;
-  struct resp_pong *r_pong;
+  uint16_t hop = 0;
+
+  struct resp_pong *r_pong = create_r_pong();
+
   char hostname[128];
+
   Elapsed();
+  ElapsedStart();
+  ping(ai->ai_addr, sock, seq);
+  pong(sock, r_pong);
+  ElapsedEnd();
+
+  uint32_t target_address = ntohl(r_pong->addr_in.sin_addr.s_addr);
+
+  getnameinfo((struct sockaddr *)&r_pong->addr_in,
+              sizeof(r_pong->addr_in),
+              hostname,
+              sizeof(hostname), NULL, 0, 0);
+
+  printf(fSIZEL " bytes from=" fSTRING
+                " ttl=" fNUMD " time=" fMILS " err=%d\t\n",
+         sizeof(r_pong->m),
+         hostname,
+         r_pong->m.m_iphdr.ttl,
+         ELAPSED_MS,
+         r_pong->err);
+
   struct time_stats *stats = init_time_stats();
 
-  for (; seq < 10; seq++)
+  for (hop = 1; hop < 101; hop++)
   {
+    // increase ttl
+    setsockopt(sock, IPPROTO_IP, IP_TTL, &hop, sizeof(hop));
     ElapsedStart();
-
-    ping(ai->ai_addr, sock, seq);
-    r_pong = pong(sock);
-
+    ping(ai->ai_addr, sock, 0);
+    pong(sock, r_pong);
     ElapsedEnd();
 
-    update_time_stats(ELAPSED_MS, stats);
+    double elapsed = ELAPSED_MS;
 
     getnameinfo((struct sockaddr *)&r_pong->addr_in,
                 sizeof(r_pong->addr_in),
                 hostname,
                 sizeof(hostname), NULL, 0, 0);
 
-    printf(fSIZEL " bytes from=" fSTRING " icmp_seq=" fNUMD
-                  " ttl=" fNUMD " time=" fMILS " err=%d\t\n",
-           sizeof(r_pong->m),
-           hostname,
-           seq,
-           r_pong->m.m_iphdr.ttl,
-           stats->last_value,
-           r_pong->err);
+    if (r_pong->err != EAGAIN)
+    {
 
-    // todo: add option to show this
-    // print_iphdr(r_pong->m.m_iphdr);
-    // print_icmphdr(r_pong->m.m_icmphdr);
+      printf(fNUMD " > " fSTRING " ttl=" fNUMD
+                   " time=" fMILS " err=%d\t\n",
+             hop,
+             hostname,
+             r_pong->m.m_iphdr.ttl,
+             ELAPSED_MS,
+             r_pong->err);
+    }
+    else
+    {
+      printf("\t" fNUMD " > " fSTRING
+             " ttl=" fNUMD " time=" fMILS "\t\n",
+             hop,
+             hostname,
+             r_pong->m.m_iphdr.ttl,
+             ELAPSED_MS);
+    }
 
-    free(r_pong);
+    update_time_stats(elapsed, stats);
+
+    if (target_address == ntohl(r_pong->addr_in.sin_addr.s_addr))
+    {
+      printf("Reached.\n");
+      break;
+    }
   }
 
   printf(fNUMD " packets - min=" fMILS2 " max=" fMILS2
                " avg=" fMILS2 " total time=" fMILS "\n",
-         seq,
+         hop,
          stats->min,
          stats->max,
-         stats->total / seq,
+         stats->total / hop,
          stats->total);
 
-  free(stats);
+  free(r_pong);
   return 0;
 }
