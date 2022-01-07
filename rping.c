@@ -12,120 +12,7 @@
 #include <errno.h>
 #include "b-time.h"
 #include "b-print.h"
-
-#define M_HEADERS (sizeof(struct iphdr) +   \
-                   sizeof(struct icmphdr) + \
-                   sizeof(struct icmp))
-
-struct resp_pong
-{
-  struct sockaddr_in addr_in;
-  int err;
-  struct
-  {
-    struct iphdr m_iphdr;        // 20
-    struct icmphdr m_icmphdr;    // 8
-    struct icmp m_icmp;          // 28
-    char m_data[64 - M_HEADERS]; // 8
-  } m;
-};
-
-struct resp_pong *pong(int);
-
-// bsd checksum
-unsigned short in_cksum(unsigned short *addr, int len)
-{
-  int nleft = len;
-  int sum = 0;
-  unsigned short *w = addr;
-  unsigned short answer = 0;
-
-  while (nleft > 1)
-  {
-    sum += *w++;
-    nleft -= 2;
-  }
-
-  if (nleft == 1)
-  {
-    *(unsigned char *)(&answer) = *(unsigned char *)w;
-    sum += answer;
-  }
-
-  sum = (sum >> 16) + (sum & 0xFFFF);
-  sum += (sum >> 16);
-  answer = ~sum;
-  return (answer);
-}
-
-void ping(struct sockaddr *ai_addr, int sock, uint16_t seq)
-{
-  // packet 64 bits as linux ping
-  struct packet
-  {
-    struct icmp m_icmp;
-    char m_data[64 - sizeof(struct icmp)];
-  } m_packet;
-
-  m_packet.m_icmp.icmp_type = ICMP_ECHO;
-  m_packet.m_icmp.icmp_code = ICMP_ECHOREPLY;
-  m_packet.m_icmp.icmp_cksum = 0;
-
-  // icmp_hun.ih_idseq.icd_id is the identifier of
-  // the ICMP datagram header
-  m_packet.m_icmp.icmp_hun.ih_idseq.icd_id = htons(1000);
-
-  // icmp_seq icmp_hun.ih_idseq.icd_seq is the sequence
-  // number field
-  m_packet.m_icmp.icmp_hun.ih_idseq.icd_seq = htons(seq);
-
-  memset(&m_packet.m_icmp.icmp_dun,
-         0,
-         sizeof(m_packet.m_icmp.icmp_dun));
-
-  // icmp_dun.id_data , Can be set as the time to send the datagram
-
-  // checksum (full packet)
-  m_packet.m_icmp.icmp_cksum = in_cksum((unsigned short *)&m_packet,
-                                        sizeof(m_packet));
-
-  ssize_t send = sendto(sock,
-                        &m_packet,
-                        sizeof(m_packet),
-                        0,
-                        ai_addr,
-                        sizeof(*ai_addr));
-
-  if (send < 0)
-  {
-    perror("sendto");
-    exit(1);
-  }
-}
-
-struct resp_pong *pong(int sock)
-{
-
-  struct resp_pong *r_pong = malloc(sizeof(struct resp_pong));
-  socklen_t addrlen = sizeof(r_pong->addr_in);
-
-  ssize_t recv = recvfrom(sock,
-                          &r_pong->m,
-                          sizeof(r_pong->m),
-                          0,
-                          (struct sockaddr *)&r_pong->addr_in,
-                          &addrlen);
-
-  if (recv < 0)
-  {
-    r_pong->err = errno;
-    return r_pong;
-  }
-  else
-  {
-    return r_pong;
-  }
-}
+#include "b-icmp.h"
 
 int main(int argc, char *argv[])
 {
@@ -160,17 +47,18 @@ int main(int argc, char *argv[])
   }
 
   uint16_t seq = 0;
-  struct resp_pong *r_pong;
+
   char hostname[128];
   Elapsed();
   struct time_stats *stats = init_time_stats();
+  struct resp_pong *r_pong = create_r_pong();
 
   for (; seq < 10; seq++)
   {
     ElapsedStart();
 
     ping(ai->ai_addr, sock, seq);
-    r_pong = pong(sock);
+    pong(sock, r_pong);
 
     ElapsedEnd();
 
@@ -197,8 +85,6 @@ int main(int argc, char *argv[])
     {
       print_icmphdr(r_pong->m.m_icmphdr);
     }
-
-    free(r_pong);
   }
 
   printf(fNUMD " packets - min=" fMILS2 " max=" fMILS2
@@ -209,6 +95,8 @@ int main(int argc, char *argv[])
          stats->total / seq,
          stats->total);
 
+  free(r_pong);
   free(stats);
+  freeaddrinfo(ai);
   return 0;
 }
