@@ -119,7 +119,6 @@ struct resp_pong *pong(int sock)
   if (recv < 0)
   {
     r_pong->err = errno;
-    perror("recvfrom");
     return r_pong;
   }
   else
@@ -193,7 +192,11 @@ int main(int argc, char *argv[])
 
     // todo: add option to show this
     // print_iphdr(r_pong->m.m_iphdr);
-    // print_icmphdr(r_pong->m.m_icmphdr);
+
+    if (r_pong->err != 0)
+    {
+      print_icmphdr(r_pong->m.m_icmphdr);
+    }
 
     free(r_pong);
   }
